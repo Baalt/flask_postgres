@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Главная страница{% endblock %}
+
+{% block content %}
+<div>
+    <ul class="nav justify-content-end">
+        {% if current_user.is_authenticated %}
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('index') }}">Главная</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('logout') }}">Выход</a>
+        </li>
+        {% else %}
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('index') }}">Главная</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link active" href="{{ url_for('login') }}">Вход</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('register') }}">Регистрация</a>
+        </li>
+        {% endif %}
+    </ul>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item active" aria-current="page">Главная</li>
+        </ol>
+    </nav>
+</div>
+
+{% if current_user.is_authenticated %}
+{% include "pic_home2.html" %}
+
+<h4>Имя: {{ current_user.name }}</h4>
+<h4>Почта: {{ current_user.id }}</h4>
+<h4>Мой реферальный код: {{ current_user.referral }}</h4>
+<h4>Количество рефералов зарегестированных по моей ссылке {{ current_user.parent }}</h4>
+<h4>{{ current_user.inheritor }}</h4>
+{% else %}
+{% include "pic_home1.html" %}
+{% endif %}
+{% endblock %}
