@@ -4,14 +4,13 @@ import os
 import secrets
 import psycopg2
 import psycopg2.extras
-from flask import Flask, request, url_for, render_template, flash, redirect, abort, session
+from flask import Flask, request, url_for, render_template, flash, redirect, abort
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from middleware.email_controler import mail_sender
 from smtplib import SMTPRecipientsRefused
 from datetime import timedelta
-
-from config.config import config, is_safe_url
+from config.config import config
 
 app = Flask(__name__.split('.')[0])
 
@@ -20,7 +19,6 @@ login_manager.init_app(app)
 
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config.from_pyfile('config/config.cfg')
-app.config['USE_SESSION_FOR_NEXT'] = True
 app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=14)
 
 
@@ -35,6 +33,10 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(email):
+    """For connect to user data
+    it needed for flask decorator
+    it like a double check form flask security
+    or login raise hard types errors."""
     conn = None
     cur = None
 
@@ -46,23 +48,28 @@ def load_user(email):
         cur.execute('SELECT username, referral_key, parent_status, inheritor_status '
                     'FROM chk_email_return_username_pswd_referral_parent_inheritor(%s)',
                     (email,))
+
         result = cur.fetchone()
+
         if result['username']:
             username = result['username']
             referral = result['referral_key']
             parent = result['parent_status']
             inheritor = result['inheritor_status']
+
             if inheritor == 0:
                 inheritor = 'Я регистрирован без реферального кода'
+
             elif inheritor == 1:
-                inheritor = 'Я регистрирован по реферальному программе.'
+                inheritor = 'Я регистрирован по реферальному коду.'
+
             user = User(email, username, parent, inheritor, referral)
             return user
         else:
             return None
 
     except (Exception, psycopg2.DatabaseError):
-        abort(500)
+        abort(410)
 
     finally:
         if cur is not None:
@@ -83,7 +90,7 @@ def register():
     SQL check email status and write registering user in db
     with status 0 or answers about wrong email type.
     If true referral code was given it consolidate
-    pather and inheritor users then wrote in db with status 0.
+    father and inheritor users in on connection in db with status 0.
     f'''
     if not current_user.is_authenticated:
         if request.method == 'POST':
@@ -103,8 +110,9 @@ def register():
                 ip_address = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
                 sql_insert_data = (username, pswd, email, repair, referral, ip_address)
-                cur.execute('SELECT chk_new_user_for_duplication_and_ip_attack_then_add(%s, %s, %s, %s, %s, %s)',
-                            sql_insert_data)
+                cur.execute(
+                    'SELECT chk_new_user_for_duplication_and_ip_attack_then_add(%s, %s, %s, %s, %s, %s)',
+                    sql_insert_data)
                 chk_answer = cur.fetchone()[0]
 
                 if chk_answer == 'registration':
@@ -114,7 +122,8 @@ def register():
                         conn.commit()
                         parent = request.form['referral'].strip()
                         if parent and len(parent) == 14:
-                            cur.execute('SELECT insert_into_referral_parent_inheritor_id(%s, %s)', (parent, email))
+                            cur.execute('SELECT insert_into_referral_parent_inheritor_id(%s, %s)',
+                                        (parent, email))
                             conn.commit()
 
                     except SMTPRecipientsRefused:
@@ -126,7 +135,7 @@ def register():
 
                 elif chk_answer == 'registered':
                     flash('Почта уже зарегестрированна, авторизуйтесь или востановите аккаунт.')
-                    return redirect(url_for('logi'))
+                    return redirect(url_for('login'))
 
                 elif chk_answer == 'check email':
                     flash('На вашу почту уже было отправлено письмо с подтвеждением регистрации')
@@ -140,7 +149,7 @@ def register():
                     flash('Низвестная ошибка базы данных.')
                     return redirect(url_for('message'))
 
-                flash('Низвестная ошибка функции БД "chk_new_user_for_duplication_and_ip_attack_then_add"')
+                flash('Ошибка соединения с функции БД "chk_new_user_for_duplication_and_ip_attack_then_add"')
                 return redirect(url_for('message'))
 
             except (Exception, psycopg2.DatabaseError) as error:
@@ -159,9 +168,8 @@ def register():
 @app.route('/register/complete/<string:url>')
 def reg_success(url):
     '''Checks url
-    SQL Change register-repair url for new one
-    and change status 1 - registered or return
-    another email status answers.
+    SQL Change register-repair url,
+    change status 1 - registered or return another email status answers.
     '''
     if len(url) == 16:
         conn = None
@@ -200,9 +208,13 @@ def reg_success(url):
                 conn.close()
     abort(404)
 
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    ''''''
+    '''Check user is not login
+    GET return registration form
+    POST return answer about user status registration
+    IF user that return all data about user'''
     if not current_user.is_authenticated:
         if request.method == 'POST':
             conn = None
@@ -261,6 +273,6 @@ def message():
 
 
 if __name__ == '__main__':
-    # app.run(debug=True)
     from waitress import serve
-    serve(app, host="127.0.0.1", port=5000)
+
+    serve(app, host="0.0.0.0", port=5000)
