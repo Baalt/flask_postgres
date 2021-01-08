@@ -69,7 +69,7 @@ def load_user(email):
             return None
 
     except (Exception, psycopg2.DatabaseError):
-        abort(410)
+        abort(404)
 
     finally:
         if cur is not None:
